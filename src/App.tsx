@@ -1,5 +1,6 @@
 import "./App.css";
 import {
+	Badge,
 	Button,
 	Card,
 	CardContent,
@@ -17,10 +18,20 @@ import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Command } from "@tauri-apps/plugin-shell";
 import { ReloadIcon } from "@radix-ui/react-icons";
+import { listen } from "@tauri-apps/api/event";
+
+type DropEvent = {
+	payload: {
+		paths?: string[];
+		position?: {
+			x: number;
+			y: number;
+		};
+	};
+};
 
 function App() {
 	const [filePath, setFilePath] = useState<string>();
-	const [outputFilePath, setOutputFilePath] = useState<string>();
 	const [compressionType, setCompressionType] = useState<"default" | "super">(
 		"default",
 	);
@@ -40,20 +51,20 @@ function App() {
 				],
 			});
 			if (!file) return;
-
-			const fileSplitted = file.path.split(".");
-			const fileName = fileSplitted[0];
-			const fileExt = fileSplitted[1];
-			const outputFilename = fileName + "-compressed." + fileExt;
 			setFilePath(file.path);
-			setOutputFilePath(outputFilename);
 		} catch (e) {
 			console.log({ e });
 		}
 	};
-	const onSubmit = async () => {
-		if (!filePath || !outputFilePath) return;
+	const onSubmit = async (ev: any) => {
+		ev.preventDefault();
+		if (!filePath) return;
 		try {
+			const fileSplitted = filePath.split(".");
+			const fileName = fileSplitted[0];
+			const fileExt = fileSplitted[1];
+			const outputFilename = fileName + "-compressed." + fileExt;
+
 			const command = Command.sidecar("binaries/ffmpeg", [
 				"-i",
 				filePath,
@@ -61,13 +72,13 @@ function App() {
 				compressionType === "super" ? "libx265" : "h264",
 				compressionType === "super" ? "-crf" : "-acodec",
 				compressionType === "super" ? "28" : "mp2",
-				outputFilePath,
+				outputFilename!,
 			]);
 			setLoading(true);
 			await command.execute();
 			toast({
 				title: "Your video compressed successfully!",
-				description: `File: ${outputFilePath}`,
+				description: `File: ${outputFilename}`,
 				variant: "default",
 			});
 		} catch (e) {
@@ -83,10 +94,19 @@ function App() {
 		}
 	};
 	const onCancel = () => {
-		setOutputFilePath(undefined);
 		setFilePath(undefined);
 		setCompressionType("default");
 	};
+
+	useEffect(() => {
+		const unListen = listen("tauri://drop", (event: DropEvent) => {
+			if (event && event.payload && event.payload.paths)
+				setFilePath(event.payload.paths[0]);
+		});
+		return () => {
+			unListen.then();
+		};
+	}, []);
 	return (
 		<section
 			style={{
@@ -98,10 +118,10 @@ function App() {
 			}}
 		>
 			<Toaster />
-			<Card className="w-[350px]">
+			<Card className="w-5/6 max-w-[400px]">
 				<CardHeader>
-					<CardTitle>Compress your video</CardTitle>
-					<CardDescription>
+					<CardTitle className="text-center">Compress your video</CardTitle>
+					<CardDescription className="text-center">
 						Select a video you want to compress.
 					</CardDescription>
 				</CardHeader>
@@ -113,20 +133,34 @@ function App() {
 									Comression type
 								</Label>
 								<ToggleGroup
+									disabled={loading}
 									type="single"
 									value={compressionType}
+									onValueChange={(val) =>
+										setCompressionType(val as "default" | "super")
+									}
 									variant="outline"
 								>
-									<ToggleGroupItem value="default" aria-label="Toggle default">
+									<ToggleGroupItem
+										disabled={loading}
+										value="default"
+										aria-label="Toggle default"
+									>
 										Default
 									</ToggleGroupItem>
-									<ToggleGroupItem value="super" aria-label="Toggle outline">
+									<ToggleGroupItem
+										disabled={loading}
+										value="super"
+										aria-label="Toggle outline"
+									>
 										Super
 									</ToggleGroupItem>
 								</ToggleGroup>
 							</div>
-							<div className="w-full">
-								{filePath || (
+							<div className="w-full flex items-center justify-center">
+								{filePath ? (
+									<Badge variant="secondary">{filePath}</Badge>
+								) : (
 									<Button
 										width="full"
 										type="button"
@@ -140,22 +174,19 @@ function App() {
 						</div>
 					</div>
 				</CardContent>
-				<CardFooter className="flex justify-between">
-					{!loading ? (
-						<>
-							<Button type="button" variant="outline" onClick={onCancel}>
-								Cancel
-							</Button>
-							<Button onClick={onSubmit} type="submit">
-								Compress
-							</Button>
-						</>
-					) : (
-						<Button disabled>
-							<ReloadIcon className="mr-2 h-4 w-4 animate-spin" />
-							Please wait
-						</Button>
-					)}
+				<CardFooter className="flex mt-auto justify-between">
+					<Button
+						disabled={loading}
+						type="button"
+						variant="outline"
+						onClick={onCancel}
+					>
+						Cancel
+					</Button>
+					<Button disabled={loading} onClick={onSubmit} type="submit">
+						{loading && <ReloadIcon className="mr-2 h-4 w-4 animate-spin" />}
+						Compress
+					</Button>
 				</CardFooter>
 			</Card>
 		</section>

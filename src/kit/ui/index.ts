@@ -7,3 +7,4 @@ export * from "./toaster";
 export * from "./use-toast";
 export * from "./toggle";
 export * from "./toggle-group";
+export * from "./badge";
