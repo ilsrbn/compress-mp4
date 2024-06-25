@@ -17,6 +17,11 @@ import {
 import { useEffect, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Command } from "@tauri-apps/plugin-shell";
+import {
+	isPermissionGranted,
+	requestPermission,
+	sendNotification,
+} from "@tauri-apps/plugin-notification";
 import { ReloadIcon } from "@radix-ui/react-icons";
 import { listen } from "@tauri-apps/api/event";
 
@@ -63,7 +68,10 @@ function App() {
 			const fileSplitted = filePath.split(".");
 			const fileName = fileSplitted[0];
 			const fileExt = fileSplitted[1];
-			const outputFilename = fileName + "-compressed." + fileExt;
+			const outputFilename =
+				fileName +
+				`${compressionType === "super" ? "-super-compressed" : "-compressed"}.` +
+				fileExt;
 
 			const command = Command.sidecar("binaries/ffmpeg", [
 				"-i",
@@ -76,13 +84,11 @@ function App() {
 			]);
 			setLoading(true);
 			await command.execute();
-			toast({
-				title: "Your video compressed successfully!",
-				description: `File: ${outputFilename}`,
-				variant: "default",
-			});
+
+			notify(outputFilename);
 		} catch (e) {
 			console.log({ e });
+
 			toast({
 				title: "Something went wrong!",
 				description: e as string,
@@ -96,6 +102,20 @@ function App() {
 	const onCancel = () => {
 		setFilePath(undefined);
 		setCompressionType("default");
+	};
+	const notify = async (path: string) => {
+		let permissionGranted = await isPermissionGranted();
+
+		// If not we need to request it
+		if (!permissionGranted) {
+			const permission = await requestPermission();
+			permissionGranted = permission === "granted";
+		}
+
+		// Once permission has been granted we can send the notification
+		if (permissionGranted) {
+			sendNotification({ title: "Compression done!", body: `File: ${path}!` });
+		}
 	};
 
 	useEffect(() => {
